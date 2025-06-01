@@ -6,31 +6,50 @@ namespace OmniSIS\Core;
 use InvalidArgumentException;
 use RuntimeException;
 
+/**
+ * A PSR-3–compatible logger that writes to three files:
+ *
+ *  - storage/logs/app.log       : all levels EXCEPT DEBUG
+ *  - storage/logs/debug.log     : all levels, including DEBUG (only if APP_DEBUG=true)
+ *  - storage/logs/error.log     : only ERROR and above (ERROR, CRITICAL, ALERT, EMERGENCY)
+ *
+ * Whether DEBUG‐level (and everything else) is written to debug.log
+ * is controlled by the APP_DEBUG environment variable (loaded via phpdotenv).
+ */
 final class Logger
 {
+    /** PSR-3 level constants **/
+    private const LEVEL_EMERGENCY = 'EMERGENCY';
+    private const LEVEL_ALERT     = 'ALERT';
+    private const LEVEL_CRITICAL  = 'CRITICAL';
+    private const LEVEL_ERROR     = 'ERROR';
+    private const LEVEL_WARNING   = 'WARNING';
+    private const LEVEL_NOTICE    = 'NOTICE';
+    private const LEVEL_INFO      = 'INFO';
+    private const LEVEL_DEBUG     = 'DEBUG';
+
     private const APP_LOG_FILE_RELATIVE   = '/../storage/logs/app.log';
     private const DEBUG_LOG_FILE_RELATIVE = '/../storage/logs/debug.log';
     private const ERROR_LOG_FILE_RELATIVE = '/../storage/logs/error.log';
 
-    private const LEVEL_INFO  = 'INFO';
-    private const LEVEL_DEBUG = 'DEBUG';
-    private const LEVEL_WARN  = 'WARN';
-    private const LEVEL_ERROR = 'ERROR';
-
-    private string   $appFilePath;
-    private ?string  $debugFilePath = null;
-    private string   $errorFilePath;
+    private string      $appFilePath;
+    private ?string     $debugFilePath = null;
+    private string      $errorFilePath;
     private $appHandle;
     private $debugHandle;   // null if debug disabled
     private $errorHandle;
-    private bool     $debugEnabled;
+    private bool        $debugEnabled;
 
+    /** @var Logger|null */
     private static ?Logger $instance = null;
 
+    /**
+     * Return the singleton Logger.
+     */
     public static function getInstance(): Logger
     {
         if (self::$instance === null) {
-            // Before constructing, we can’t log to our own logger yet:
+            // We can’t yet log into our own logger, so write to stderr:
             file_put_contents('php://stderr', "[Logger DEBUG] getInstance: creating new Logger()\n");
             self::$instance = new Logger();
         } else {
@@ -39,6 +58,9 @@ final class Logger
         return self::$instance;
     }
 
+    /**
+     * Private constructor: open log files, initialize flags.
+     */
     private function __construct()
     {
         file_put_contents('php://stderr', "[Logger DEBUG] __construct: entering\n");
@@ -46,15 +68,11 @@ final class Logger
         //
         // ─── 1) READ APP_DEBUG FROM ENVIRONMENT ────────────────────────────────────
         //
-        // Try getenv first; if that's empty, fall back to $_ENV['APP_DEBUG'].
-        // Default to 'false' if neither is set.
-        //
+        // phpdotenv in Application::__construct() has already loaded .env into getenv()/$_ENV.
         $rawEnv = getenv('APP_DEBUG');
         if ($rawEnv === false || trim($rawEnv) === '') {
-            // Maybe PHP-FPM or Apache has it in $_ENV but not in getenv()
             $rawEnv = $_ENV['APP_DEBUG'] ?? 'false';
         }
-        // FILTER_VALIDATE_BOOLEAN maps "true","1","yes" → true; otherwise false
         $this->debugEnabled = filter_var($rawEnv, FILTER_VALIDATE_BOOLEAN);
         file_put_contents(
             'php://stderr',
@@ -64,7 +82,8 @@ final class Logger
         //
         // ─── 2) COMPUTE ABSOLUTE PATHS ────────────────────────────────────────────
         //
-        $baseDir = dirname(__DIR__, 1); // project-root/app/Core → project-root
+        // __DIR__ is “project-root/app/Core”. We want “project-root”.
+        $baseDir = dirname(__DIR__, 2); // project-root
         $this->appFilePath   = $baseDir . self::APP_LOG_FILE_RELATIVE;
         $this->errorFilePath = $baseDir . self::ERROR_LOG_FILE_RELATIVE;
         if ($this->debugEnabled) {
@@ -76,7 +95,10 @@ final class Logger
         if ($this->debugEnabled) {
             file_put_contents('php://stderr', "[Logger DEBUG] __construct: debugFilePath = {$this->debugFilePath}\n");
         } else {
-            file_put_contents('php://stderr', "[Logger DEBUG] __construct: debugFilePath disabled (APP_DEBUG=false)\n");
+            file_put_contents(
+                'php://stderr',
+                "[Logger DEBUG] __construct: debugFilePath disabled (APP_DEBUG=false)\n"
+            );
         }
 
         //
@@ -85,13 +107,12 @@ final class Logger
         $appDir   = dirname($this->appFilePath);
         $errorDir = dirname($this->errorFilePath);
         $dirs     = [$appDir, $errorDir];
-
         if ($this->debugEnabled && $this->debugFilePath !== null) {
             $dirs[] = dirname($this->debugFilePath);
         }
 
         foreach ($dirs as $dir) {
-            file_put_contents('php://stderr', "[Logger DEBUG] __construct: checking/creating directory {$dir}\n");
+            file_put_contents('php://stderr', "[Logger DEBUG] __construct: ensuring directory exists: {$dir}\n");
             if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
                 $msg = "Unable to create log directory: {$dir}";
                 file_put_contents('php://stderr', "[Logger ERROR] __construct: {$msg}\n");
@@ -137,6 +158,9 @@ final class Logger
         }
     }
 
+    /**
+     * Close all file handles.
+     */
     public function __destruct()
     {
         file_put_contents('php://stderr', "[Logger DEBUG] __destruct: entering\n");
@@ -145,22 +169,57 @@ final class Logger
             file_put_contents('php://stderr', "[Logger DEBUG] __destruct: fclose(appHandle)\n");
             fclose($this->appHandle);
         } else {
-            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: appHandle not a resource\n");
+            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: appHandle not resource\n");
         }
 
         if ($this->debugHandle !== null && is_resource($this->debugHandle)) {
             file_put_contents('php://stderr', "[Logger DEBUG] __destruct: fclose(debugHandle)\n");
             fclose($this->debugHandle);
         } else {
-            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: debugHandle disabled or not a resource\n");
+            file_put_contents(
+                'php://stderr',
+                "[Logger DEBUG] __destruct: debugHandle disabled or not resource\n"
+            );
         }
 
         if (is_resource($this->errorHandle)) {
             file_put_contents('php://stderr', "[Logger DEBUG] __destruct: fclose(errorHandle)\n");
             fclose($this->errorHandle);
         } else {
-            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: errorHandle not a resource\n");
+            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: errorHandle not resource\n");
         }
+    }
+
+    /* ─── PSR-3 LEVEL METHODS ─────────────────────────────────────────────────── */
+
+    public function emergency(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_EMERGENCY, $message, $context);
+    }
+
+    public function alert(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_ALERT, $message, $context);
+    }
+
+    public function critical(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_CRITICAL, $message, $context);
+    }
+
+    public function error(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_ERROR, $message, $context);
+    }
+
+    public function warning(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_WARNING, $message, $context);
+    }
+
+    public function notice(string $message, array $context = []): void
+    {
+        $this->write(self::LEVEL_NOTICE, $message, $context);
     }
 
     public function info(string $message, array $context = []): void
@@ -171,25 +230,18 @@ final class Logger
     public function debug(string $message, array $context = []): void
     {
         if (! $this->debugEnabled) {
-            // APP_DEBUG=false → skip entirely
+            // APP_DEBUG=false → skip debug (and skip writing to debug.log entirely)
             return;
         }
         $this->write(self::LEVEL_DEBUG, $message, $context);
     }
 
-    public function warn(string $message, array $context = []): void
-    {
-        $this->write(self::LEVEL_WARN, $message, $context);
-    }
-
-    public function error(string $message, array $context = []): void
-    {
-        $this->write(self::LEVEL_ERROR, $message, $context);
-    }
-
+    /**
+     * Core write logic: routes each level to debug.log, app.log, error.log as needed.
+     */
     private function write(string $level, string $message, array $context = []): void
     {
-        // 1) Build timestamp
+        // 1) Build timestamp in UTC
         $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
                  ->format('Y-m-d\TH:i:s.u\Z');
         file_put_contents(
@@ -197,7 +249,7 @@ final class Logger
             "[Logger DEBUG] write: timestamp={$now}, level={$level}, message={$message}\n"
         );
 
-        // 2) Build the log line
+        // 2) Build "key=value" segments for the log line
         $parts = [
             "timestamp={$now}",
             "level={$level}",
@@ -208,7 +260,7 @@ final class Logger
             "[Logger DEBUG] write: initial parts = " . implode(' | ', $parts) . "\n"
         );
 
-        // 3) Append context
+        // 3) Append context key/value pairs
         foreach ($context as $key => $val) {
             file_put_contents(
                 'php://stderr',
@@ -223,18 +275,24 @@ final class Logger
             );
         }
 
-        // 4) Final line text
+        // 4) Final line (one‐line string)
         $line = implode(' ', $parts) . PHP_EOL;
         file_put_contents('php://stderr', "[Logger DEBUG] write: final line = {$line}\n");
 
-        // 5) Write to debug.log if enabled
+        // 5) Write to debug.log if APP_DEBUG=true
         if ($this->debugEnabled && $this->debugHandle !== null) {
             if (flock($this->debugHandle, LOCK_EX)) {
-                file_put_contents('php://stderr', "[Logger DEBUG] write: flock on debugHandle, writing\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: flock acquired on debugHandle, writing\n"
+                );
                 fwrite($this->debugHandle, $line);
                 fflush($this->debugHandle);
                 flock($this->debugHandle, LOCK_UN);
-                file_put_contents('php://stderr', "[Logger DEBUG] write: released flock on debugHandle\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: released flock on debugHandle\n"
+                );
             } else {
                 file_put_contents(
                     'php://stderr',
@@ -243,14 +301,20 @@ final class Logger
             }
         }
 
-        // 6) Write to app.log when level ≠ DEBUG
+        // 6) Write to app.log for any level ≠ DEBUG
         if ($level !== self::LEVEL_DEBUG) {
             if (flock($this->appHandle, LOCK_EX)) {
-                file_put_contents('php://stderr', "[Logger DEBUG] write: flock on appHandle, writing\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: flock acquired on appHandle, writing\n"
+                );
                 fwrite($this->appHandle, $line);
                 fflush($this->appHandle);
                 flock($this->appHandle, LOCK_UN);
-                file_put_contents('php://stderr', "[Logger DEBUG] write: released flock on appHandle\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: released flock on appHandle\n"
+                );
             } else {
                 file_put_contents(
                     'php://stderr',
@@ -259,14 +323,25 @@ final class Logger
             }
         }
 
-        // 7) Write ERROR‐only to error.log
-        if ($level === self::LEVEL_ERROR) {
+        // 7) Write to error.log if level is ERROR or above (ERROR, CRITICAL, ALERT, EMERGENCY)
+        if (in_array($level, [
+            self::LEVEL_ERROR,
+            self::LEVEL_CRITICAL,
+            self::LEVEL_ALERT,
+            self::LEVEL_EMERGENCY
+        ], true)) {
             if (flock($this->errorHandle, LOCK_EX)) {
-                file_put_contents('php://stderr', "[Logger DEBUG] write: flock on errorHandle, writing\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: flock acquired on errorHandle, writing\n"
+                );
                 fwrite($this->errorHandle, $line);
                 fflush($this->errorHandle);
                 flock($this->errorHandle, LOCK_UN);
-                file_put_contents('php://stderr', "[Logger DEBUG] write: released flock on errorHandle\n");
+                file_put_contents(
+                    'php://stderr',
+                    "[Logger DEBUG] write: released flock on errorHandle\n"
+                );
             } else {
                 file_put_contents(
                     'php://stderr',
@@ -276,16 +351,24 @@ final class Logger
         }
     }
 
+    /**
+     * Ensure context key is alphanumeric or underscore.
+     *
+     * @throws InvalidArgumentException
+     */
     private function sanitizeKey(string $key): string
     {
         file_put_contents('php://stderr', "[Logger DEBUG] sanitizeKey: checking '{$key}'\n");
-        if (! preg_match('/^[a-zA-Z0-9_]+$/', $key)) {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $key)) {
             file_put_contents('php://stderr', "[Logger ERROR] sanitizeKey: invalid key '{$key}'\n");
             throw new InvalidArgumentException("Invalid context key for logger: {$key}");
         }
         return $key;
     }
 
+    /**
+     * Escape a value by backslash-escaping quotes/backslashes and wrapping in quotes.
+     */
     private function escapeValue(string $value): string
     {
         file_put_contents('php://stderr', "[Logger DEBUG] escapeValue: raw value = {$value}\n");
@@ -294,3 +377,27 @@ final class Logger
         return '"' . $escaped . '"';
     }
 }
+
+/* ─── TEST PSR-3 LEVELS ────────────────────────────────────────────────────────────
+   Uncomment this block somewhere (e.g. at the end of Application::run()) to verify:
+
+$logger = \OmniSIS\Core\Logger::getInstance();
+$logger->emergency('*** TEST: EMERGENCY level ***');
+$logger->alert    ('*** TEST: ALERT level ***');
+$logger->critical ('*** TEST: CRITICAL level ***');
+$logger->error    ('*** TEST: ERROR level ***');
+$logger->warning  ('*** TEST: WARNING level ***');
+$logger->notice   ('*** TEST: NOTICE level ***');
+$logger->info     ('*** TEST: INFO level ***');
+$logger->debug    ('*** TEST: DEBUG level ***');
+*/
+
+/* Expected outcome (when APP_DEBUG=true):
+   - storage/logs/debug.log should contain all eight lines in order.
+   - storage/logs/app.log   should contain the seven lines EXCEPT “DEBUG”:
+       EMERGENCY, ALERT, CRITICAL, ERROR, WARNING, NOTICE, INFO
+   - storage/logs/error.log should contain only:
+       EMERGENCY, ALERT, CRITICAL, ERROR
+   (DEBUG and lower‐severity levels do not go to error.log.)
+*/
+
