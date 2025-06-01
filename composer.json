@@ -17,6 +17,9 @@
   "scripts": {
     "post-install-cmd": [
       "chmod -R 0775 storage/logs"
+    ],
+    "tail": [
+      "powershell -NoProfile -Command \"Get-Content .\\storage\\logs\\app.log -Wait\""
     ]
   }
 }

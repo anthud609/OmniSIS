@@ -14,7 +14,7 @@ define('VIEW_PATH', APP_PATH . '/Views');
 // 3. Autoload everything
 require BASE_PATH . '/vendor/autoload.php';
 
-use App\Core\Logger;
+use OmniSIS\Core\Logger;
 use App\Controllers\HomeController;
 
 // 4. Instantiate the global logger (this will also create storage/logs if needed)
