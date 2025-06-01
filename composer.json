@@ -1,0 +1,22 @@
+
+
+{
+  "name": "omnisis/core",
+  "type": "project",
+  "require": {
+    "php": ">=8.0"
+  },
+      "require-dev": {
+        "phpunit/phpunit": "*"
+    },
+  "autoload": {
+    "psr-4": {
+      "OmniSIS\\": "app/"
+    }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "chmod -R 0775 storage/logs"
+    ]
+  }
+}
