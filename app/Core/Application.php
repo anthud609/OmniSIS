@@ -27,8 +27,12 @@ final class Application
     {
         // ─── 1) LOAD .env USING phpdotenv ─────────────────────────────────────────
         // Dotenv will look for a ".env" file in the project root (one level above "app/")
-        $dotenv = Dotenv::createImmutable(dirname(__DIR__, 1));
-        $dotenv->safeLoad();
+      // before:
+// $dotenv = Dotenv::createImmutable(dirname(__DIR__, 1));
+// after:
+$dotenv = Dotenv::createImmutable(dirname(__DIR__, 2));
+$dotenv->safeLoad();
+
         // safeLoad(): if .env is missing, it will not throw. If you prefer an exception,
         // use ->load() instead.
 
