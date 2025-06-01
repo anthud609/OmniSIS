@@ -10,7 +10,7 @@ define('BASE_PATH', dirname(__DIR__));           // project-root/
 define('APP_PATH', BASE_PATH . '/app');          // project-root/app/
 define('VIEW_PATH', APP_PATH . '/Views');        // project-root/app/Views/
 
-// 3. Autoload via Composer (PSR-4)
+// 3. Autoload via Composer (PSR-4, including phpdotenv & your classes)
 require BASE_PATH . '/vendor/autoload.php';
 
 // 4. Bootstrap and run the Application
