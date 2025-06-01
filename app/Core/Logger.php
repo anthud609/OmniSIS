@@ -23,7 +23,7 @@ final class Logger
     private const LEVEL_ALERT     = 'ALERT';
     private const LEVEL_CRITICAL  = 'CRITICAL';
     private const LEVEL_ERROR     = 'ERROR';
-    private const LEVEL_WARNING   = 'WARNING';
+    private const LEVEL_warn   = 'warn';
     private const LEVEL_NOTICE    = 'NOTICE';
     private const LEVEL_INFO      = 'INFO';
     private const LEVEL_DEBUG     = 'DEBUG';
@@ -212,9 +212,9 @@ final class Logger
         $this->write(self::LEVEL_ERROR, $message, $context);
     }
 
-    public function warning(string $message, array $context = []): void
+    public function warn(string $message, array $context = []): void
     {
-        $this->write(self::LEVEL_WARNING, $message, $context);
+        $this->write(self::LEVEL_warn, $message, $context);
     }
 
     public function notice(string $message, array $context = []): void
@@ -378,24 +378,21 @@ final class Logger
     }
 }
 
-/* ─── TEST PSR-3 LEVELS ────────────────────────────────────────────────────────────
-   Uncomment this block somewhere (e.g. at the end of Application::run()) to verify:
 
 $logger = \OmniSIS\Core\Logger::getInstance();
 $logger->emergency('*** TEST: EMERGENCY level ***');
 $logger->alert    ('*** TEST: ALERT level ***');
 $logger->critical ('*** TEST: CRITICAL level ***');
 $logger->error    ('*** TEST: ERROR level ***');
-$logger->warning  ('*** TEST: WARNING level ***');
+$logger->warn  ('*** TEST: warn level ***');
 $logger->notice   ('*** TEST: NOTICE level ***');
 $logger->info     ('*** TEST: INFO level ***');
 $logger->debug    ('*** TEST: DEBUG level ***');
-*/
 
 /* Expected outcome (when APP_DEBUG=true):
    - storage/logs/debug.log should contain all eight lines in order.
    - storage/logs/app.log   should contain the seven lines EXCEPT “DEBUG”:
-       EMERGENCY, ALERT, CRITICAL, ERROR, WARNING, NOTICE, INFO
+       EMERGENCY, ALERT, CRITICAL, ERROR, warn, NOTICE, INFO
    - storage/logs/error.log should contain only:
        EMERGENCY, ALERT, CRITICAL, ERROR
    (DEBUG and lower‐severity levels do not go to error.log.)
