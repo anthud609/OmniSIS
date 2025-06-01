@@ -5,18 +5,6 @@ namespace OmniSIS\Core;
 
 use OmniSIS\Core\Logger;
 
-/**
- * Application bootstraps and dispatches incoming HTTP requests.
- * 
- * Responsibilities:
- *  1. Instantiate the Logger singleton.
- *  2. Log that the front controller was hit.
- *  3. Parse “route” from $_GET['route'].
- *  4. Map route (hard-coded for now) to a controller class and action.
- *  5. Validate that the controller class and action exist.
- *  6. Instantiate the controller, inject Logger, and invoke the action.
- *  7. Catch any uncaught exceptions and render a 500 response.
- */
 final class Application
 {
     private Logger $logger;
@@ -30,26 +18,35 @@ final class Application
         ]);
     }
 
-    /**
-     * Bootstraps and executes the controller/action.
-     */
     public function run(): void
     {
+        //
+        // ─── SMOKE TEST: EMIT ONE MESSAGE AT EACH LEVEL ────────────────────────────
+        //
+        $this->logger->debug('*** TEST: DEBUG level message ***');
+        $this->logger->info ('*** TEST: INFO level message ***');
+        $this->logger->warn ('*** TEST: WARN level message ***');
+        $this->logger->error('*** TEST: ERROR level message ***');
+
+        //
+        // ─── REST OF YOUR EXISTING DISPATCH LOGIC ─────────────────────────────────
+        //
+
         // 2) Log that we reached the front controller
         $this->logger->info('Application::run - Front controller invoked', [
             'request_uri' => $_SERVER['REQUEST_URI'] ?? 'unknown',
             'method'      => $_SERVER['REQUEST_METHOD'] ?? 'GET',
         ]);
 
-        // 3) Pull “route” from the rewritten URL (via .htaccess → index.php?route=…)
+        // 3) Pull “route” from query string (via .htaccess → index.php?route=…)
         $rawRoute = $_GET['route'] ?? '';
         $this->logger->debug('Application::run - raw $_GET[\'route\']', [
             'route' => $rawRoute,
         ]);
 
         // 4) Determine controller and action (hard-coded to Home::index)
-        $controllerName = 'Home';
-        $actionName     = 'index';
+        $controllerName  = 'Home';
+        $actionName      = 'index';
         $controllerClass = "OmniSIS\\Core\\Controllers\\{$controllerName}Controller";
         $actionMethod    = $actionName;
 
