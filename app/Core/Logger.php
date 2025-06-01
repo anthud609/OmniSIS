@@ -10,9 +10,7 @@ use RuntimeException;
  * A very simple single‐channel file‐based logger.
  * Writes one key‐value record per line to storage/logs/app.log.
  *
- * Usage:
- *   $logger = Logger::getInstance(); // singleton
- *   $logger->info('User logged in', ['user_id' => 42, 'ip' => '127.0.0.1']);
+ * DEBUG messages are added at every possible step.
  */
 final class Logger
 {
@@ -34,8 +32,13 @@ final class Logger
      */
     public static function getInstance(): Logger
     {
+        // Log before deciding whether to create instance
         if (self::$instance === null) {
+            // We can’t log _into_ the logger yet, so let’s write directly to stderr
+            file_put_contents('php://stderr', "[Logger DEBUG] getInstance: instance is null; creating new Logger()\n");
             self::$instance = new Logger();
+        } else {
+            file_put_contents('php://stderr', "[Logger DEBUG] getInstance: returning existing instance\n");
         }
         return self::$instance;
     }
@@ -46,24 +49,34 @@ final class Logger
      */
     private function __construct()
     {
+        file_put_contents('php://stderr', "[Logger DEBUG] __construct: enter\n");
+
         // Determine the absolute path to storage/logs/app.log
-        $baseDir = dirname(__DIR__, 1); // if this file is core/Logger.php, then dirname(__DIR__) is project root
+        $baseDir = dirname(__DIR__, 1); // project-root/app/Core → project-root
         $this->filePath = $baseDir . self::LOG_FILE_RELATIVE;
+        file_put_contents('php://stderr', "[Logger DEBUG] __construct: computed filePath = {$this->filePath}\n");
 
         // Ensure the directory exists
         $dir = dirname($this->filePath);
+        file_put_contents('php://stderr', "[Logger DEBUG] __construct: checking/creating directory {$dir}\n");
         if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-            throw new RuntimeException("Unable to create log directory: {$dir}");
+            $msg = "Unable to create log directory: {$dir}";
+            file_put_contents('php://stderr', "[Logger ERROR] __construct: {$msg}\n");
+            throw new RuntimeException($msg);
         }
 
         // Open (or create) the file in append mode
+        file_put_contents('php://stderr', "[Logger DEBUG] __construct: fopen('{$this->filePath}', 'a')\n");
         $this->handle = @fopen($this->filePath, 'a');
         if ($this->handle === false) {
-            throw new RuntimeException("Unable to open log file: {$this->filePath}");
+            $msg = "Unable to open log file: {$this->filePath}";
+            file_put_contents('php://stderr', "[Logger ERROR] __construct: {$msg}\n");
+            throw new RuntimeException($msg);
         }
 
-        // Set UTF‐8 encoding if needed (optional)
-        // stream_encoding($this->handle, 'utf-8'); // if using php 8.2+; otherwise ensure text is UTF‐8 before writing
+        // Set UTF-8 encoding if needed (optional)
+        // file_put_contents('php://stderr', "[Logger DEBUG] __construct: setting UTF-8 encoding if required\n");
+        // stream_encoding($this->handle, 'utf-8'); // PHP 8.2+
     }
 
     /**
@@ -71,16 +84,20 @@ final class Logger
      */
     public function __destruct()
     {
+        file_put_contents('php://stderr', "[Logger DEBUG] __destruct: entering\n");
         if (is_resource($this->handle)) {
+            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: fclose(handle)\n");
             fclose($this->handle);
+        } else {
+            file_put_contents('php://stderr', "[Logger DEBUG] __destruct: handle is not a resource\n");
         }
     }
 
     /**
-     * Log an INFO‐level message.
+     * Log an INFO-level message.
      *
      * @param string $message
-     * @param array<string,mixed> $context  Additional key/value pairs (e.g. ['user_id'=>123])
+     * @param array<string,mixed> $context  Additional key/value pairs
      */
     public function info(string $message, array $context = []): void
     {
@@ -88,7 +105,7 @@ final class Logger
     }
 
     /**
-     * Log a DEBUG‐level message.
+     * Log a DEBUG-level message.
      */
     public function debug(string $message, array $context = []): void
     {
@@ -96,7 +113,7 @@ final class Logger
     }
 
     /**
-     * Log a WARN‐level message.
+     * Log a WARN-level message.
      */
     public function warn(string $message, array $context = []): void
     {
@@ -104,7 +121,7 @@ final class Logger
     }
 
     /**
-     * Log an ERROR‐level message.
+     * Log an ERROR-level message.
      */
     public function error(string $message, array $context = []): void
     {
@@ -116,30 +133,41 @@ final class Logger
      */
     private function write(string $level, string $message, array $context = []): void
     {
+        // 1) Build timestamp
         $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.u\Z');
+        file_put_contents('php://stderr', "[Logger DEBUG] write: timestamp={$now}, level={$level}, message={$message}\n");
 
-        // Build the core line as key=value pairs
+        // 2) Build the core line as key=value pairs
         $parts = [
             "timestamp={$now}",
             "level={$level}",
             "message=" . $this->escapeValue($message),
         ];
+        file_put_contents('php://stderr', "[Logger DEBUG] write: initial parts = " . implode(' | ', $parts) . "\n");
 
+        // 3) Append context key/value
         foreach ($context as $key => $val) {
-            $parts[] = $this->sanitizeKey($key) . '=' . $this->escapeValue((string)$val);
+            file_put_contents('php://stderr', "[Logger DEBUG] write: sanitizing key '{$key}' and value '".(string)$val."'\n");
+            $sanitizedKey = $this->sanitizeKey($key);
+            $escapedVal   = $this->escapeValue((string)$val);
+            $parts[]      = "{$sanitizedKey}={$escapedVal}";
+            file_put_contents('php://stderr', "[Logger DEBUG] write: appended '{$sanitizedKey}={$escapedVal}'\n");
         }
 
+        // 4) Join into one line
         $line = implode(' ', $parts) . PHP_EOL;
+        file_put_contents('php://stderr', "[Logger DEBUG] write: final line = {$line}\n");
 
-        // Acquire exclusive lock, write, then release
+        // 5) Acquire lock, write, release
         if (flock($this->handle, LOCK_EX)) {
+            file_put_contents('php://stderr', "[Logger DEBUG] write: flock acquired, writing\n");
             fwrite($this->handle, $line);
             fflush($this->handle);
             flock($this->handle, LOCK_UN);
+            file_put_contents('php://stderr', "[Logger DEBUG] write: flock released after writing\n");
         } else {
-            // If we can't lock, throw or silently drop? We choose to drop to avoid breaking the app.
-            // Alternatively, uncomment the next line to throw:
-            // throw new RuntimeException('Could not lock the log file for writing.');
+            file_put_contents('php://stderr', "[Logger WARN] write: could not acquire flock, dropping log\n");
+            // Dropping to avoid blocking
         }
     }
 
@@ -148,7 +176,9 @@ final class Logger
      */
     private function sanitizeKey(string $key): string
     {
+        file_put_contents('php://stderr', "[Logger DEBUG] sanitizeKey: checking '{$key}'\n");
         if (!preg_match('/^[a-zA-Z0-9_]+$/', $key)) {
+            file_put_contents('php://stderr', "[Logger ERROR] sanitizeKey: invalid key '{$key}'\n");
             throw new InvalidArgumentException("Invalid context key for logger: {$key}");
         }
         return $key;
@@ -159,8 +189,9 @@ final class Logger
      */
     private function escapeValue(string $value): string
     {
-        // Replace backslashes and quotes
+        file_put_contents('php://stderr', "[Logger DEBUG] escapeValue: raw value = {$value}\n");
         $escaped = addcslashes($value, "\\\"");
+        file_put_contents('php://stderr', "[Logger DEBUG] escapeValue: escaped value = {$escaped}\n");
         return '"' . $escaped . '"';
     }
 }
